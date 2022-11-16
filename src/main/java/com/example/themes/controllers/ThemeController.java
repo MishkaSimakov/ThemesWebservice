@@ -1,23 +1,25 @@
 package com.example.themes.controllers;
 
-import com.example.themes.Storage;
-import com.example.themes.models.Comment;
 import com.example.themes.models.Theme;
 import com.example.themes.models.User;
+import com.example.themes.repositories.ThemeRepository;
+import com.example.themes.repositories.UserRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
+import java.util.Optional;
 
 @RestController
 public class ThemeController {
     @Autowired
-    private Storage storage;
+    private ThemeRepository themeRepository;
 
-//    curl --request POST \
+    @Autowired
+    private UserRepository userRepository;
+
+    //    curl --request POST \
 //  --url http://localhost:8080/theme \
 //  --header 'Content-Type: application/json' \
 //  --data '{
@@ -26,36 +28,46 @@ public class ThemeController {
 //	"username": "Misha Simakov"
 //}'
     @PostMapping("theme")
-    public ResponseEntity<Void> themeStore(@RequestBody Theme theme) {
-        if (!storage.addTheme(theme))
+    public ResponseEntity<Void> themeStore(@RequestBody JsonNode node) {
+        Optional<User> author = userRepository.findById(node.get("user_id").asLong());
+
+        if (author.isEmpty())
             return ResponseEntity.status(400).build();
+
+        Theme theme = new Theme();
+
+        theme.setTitle(node.get("title").asText());
+        theme.setDescription(node.get("description").asText());
+
+        theme.setUser(author.get());
+
+        themeRepository.save(theme);
 
         return ResponseEntity.noContent().build();
     }
 
-//    curl --request DELETE \
+    //    curl --request DELETE \
 //  --url http://localhost:8080/theme/0
-    @DeleteMapping("theme/{index}")
-    public ResponseEntity<Void> themeDestroy(@PathVariable Integer index) {
-        if (storage.getThemes().size() <= index)
+    @DeleteMapping("theme/{themeId}")
+    public ResponseEntity<Void> themeDestroy(@PathVariable Long themeId) {
+        if (!themeRepository.existsById(themeId))
             return ResponseEntity.status(400).build();
 
-        storage.getThemes().remove((int) index);
+        themeRepository.deleteById(themeId);
 
         return ResponseEntity.noContent().build();
     }
 
-//    curl --request GET \
+    //    curl --request GET \
 //  --url http://localhost:8080/theme
     @GetMapping("theme")
     public ResponseEntity<String> themeIndex() {
         return ResponseEntity.ok(
-                storage.getThemes().stream()
-                        .map(Theme::toString).collect(Collectors.joining("\n"))
+                String.join("\n", themeRepository.selectThemeTitles())
         );
     }
 
-//    curl --request PUT \
+    //    curl --request PUT \
 //  --url http://localhost:8080/theme/0 \
 //  --header 'Content-Type: application/json' \
 //  --data '{
@@ -63,45 +75,54 @@ public class ThemeController {
 //	"description": "test",
 //	"username": "Misha Simakov"
 //}'
-    @PutMapping("theme/{index}")
-    public ResponseEntity<Void> themeUpdate(@RequestBody Theme newTheme, @PathVariable Integer index) {
-        if (storage.getThemes().size() <= index)
+    @PutMapping("theme/{themeId}")
+    public ResponseEntity<Void> themeUpdate(@RequestBody JsonNode node, @PathVariable Long themeId) {
+        Optional<User> author = userRepository.findById(node.get("user_id").asLong());
+
+        if (author.isEmpty())
             return ResponseEntity.status(400).build();
 
-        storage.getThemes().remove((int) index);
+        Optional<Theme> themeOptional = themeRepository.findById(themeId);
 
-        if (!storage.addTheme(index, newTheme))
+        if (themeOptional.isEmpty())
             return ResponseEntity.status(400).build();
 
+        Theme theme = themeOptional.get();
+
+        theme.setTitle(node.get("title").asText());
+        theme.setDescription(node.get("description").asText());
+        theme.setUser(author.get());
+
+        themeRepository.save(theme);
 
         return ResponseEntity.noContent().build();
     }
 
-//    curl --request GET \
+    //    curl --request GET \
 //  --url http://localhost:8080/theme/count
     @GetMapping("theme/count")
-    public ResponseEntity<Integer> themeCount() {
-        return ResponseEntity.ok(storage.getThemes().size());
+    public ResponseEntity<Long> themeCount() {
+        return ResponseEntity.ok(themeRepository.count());
     }
 
-//    curl --request DELETE \
+    //    curl --request DELETE \
 //  --url http://localhost:8080/theme/all
     @DeleteMapping("theme/all")
     public ResponseEntity<Void> themeDestroyAll() {
-        storage.getThemes().clear();
+        themeRepository.deleteAll();
 
         return ResponseEntity.noContent().build();
     }
 
-//    curl --request GET \
+    //    curl --request GET \
 //  --url http://localhost:8080/theme/0
-    @GetMapping("theme/{index}")
-    public ResponseEntity<String> themeShow(@PathVariable Integer index) {
-        if (storage.getThemes().size() <= index)
+    @GetMapping("theme/{themeId}")
+    public ResponseEntity<String> themeShow(@PathVariable Long themeId) {
+        Optional<Theme> theme = themeRepository.findById(themeId);
+
+        if (theme.isEmpty())
             return ResponseEntity.status(400).build();
 
-        return ResponseEntity.ok(
-                storage.getThemes().get(index).toString()
-        );
+        return ResponseEntity.ok(theme.get().toString());
     }
 }

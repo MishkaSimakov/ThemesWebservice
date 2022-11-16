@@ -1,7 +1,7 @@
 package com.example.themes.controllers;
 
-import com.example.themes.Storage;
 import com.example.themes.models.User;
+import com.example.themes.repositories.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class UserController {
     @Autowired
-    Storage storage;
+    UserRepository userRepository;
 
     //    curl --request POST \
 //  --url http://localhost:8080/user \
@@ -22,7 +22,7 @@ public class UserController {
 //}'
     @PostMapping("user")
     public ResponseEntity<Void> userStore(@RequestBody User user) {
-        storage.addUser(user);
+        userRepository.save(user);
 
         return ResponseEntity.noContent().build();
     }

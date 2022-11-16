@@ -1,21 +1,31 @@
 package com.example.themes.controllers;
 
-import com.example.themes.Storage;
 import com.example.themes.models.Comment;
 import com.example.themes.models.Theme;
 import com.example.themes.models.User;
+import com.example.themes.repositories.CommentRepository;
+import com.example.themes.repositories.ThemeRepository;
+import com.example.themes.repositories.UserRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import javax.transaction.Transactional;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
 public class CommentController {
     @Autowired
-    private Storage storage;
+    CommentRepository commentRepository;
 
+    @Autowired
+    ThemeRepository themeRepository;
+
+    @Autowired
+    UserRepository userRepository;
 
     //    curl --request POST \
 //  --url http://localhost:8080/theme/0/comment \
@@ -24,80 +34,118 @@ public class CommentController {
 //		"username": "Misha Simakov",
 //		"text": "hello world"
 //}'
-    @PostMapping("theme/{index}/comment")
-    public ResponseEntity<Void> themeCommentStore(@RequestBody Comment comment, @PathVariable Integer index) {
-        if (storage.getThemes().size() <= index)
+    @PostMapping("theme/{themeId}/comment")
+    public ResponseEntity<Void> commentStore(@RequestBody JsonNode node, @PathVariable Long themeId) {
+        Optional<Theme> theme = themeRepository.findById(themeId);
+
+        if (theme.isEmpty())
             return ResponseEntity.status(400).build();
 
-        Theme theme = storage.getThemes().get(index);
+        Optional<User> user = userRepository.findById(node.get("user_id").asLong());
 
-        if (!storage.addComment(theme, comment))
+        if (user.isEmpty())
             return ResponseEntity.status(400).build();
+
+        Comment comment = new Comment();
+
+        comment.setText(node.get("text").asText());
+        comment.setTheme(theme.get());
+        comment.setUser(user.get());
+
+        commentRepository.save(comment);
 
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("theme/{themeIndex}/comment/{commentIndex}")
-    public ResponseEntity<Void> themeCommentDestroy(@PathVariable Integer themeIndex, @PathVariable Integer commentIndex) {
-        if (storage.getThemes().size() <= themeIndex || storage.getThemes().get(themeIndex).getComments().size() <= commentIndex)
+    @DeleteMapping("comment/{commentId}")
+    public ResponseEntity<Void> commentDestroy(@PathVariable Long commentId) {
+        if (!commentRepository.existsById(commentId))
             return ResponseEntity.status(400).build();
 
-        storage.getThemes().get(themeIndex).getComments().remove((int) commentIndex);
+        commentRepository.deleteById(commentId);
 
         return ResponseEntity.noContent().build();
     }
 
-    @PutMapping("theme/{themeIndex}/comment/{commentIndex}")
+    @PutMapping("comment/{commentId}")
     public ResponseEntity<Void> themeCommentUpdate(
-            @PathVariable Integer themeIndex,
-            @PathVariable Integer commentIndex,
-            @RequestBody Comment comment
+            @PathVariable Long commentId,
+            @RequestBody JsonNode node
     ) {
-        if (storage.getThemes().size() <= themeIndex || storage.getThemes().get(themeIndex).getComments().size() <= commentIndex)
+        Optional<Comment> commentOptional = commentRepository.findById(commentId);
+
+        if (commentOptional.isEmpty())
             return ResponseEntity.status(400).build();
 
-        storage.getThemes().get(themeIndex).getComments().remove((int) commentIndex);
+        Optional<User> user = userRepository.findById(node.get("user_id").asLong());
 
-        Theme theme = storage.getThemes().get(themeIndex);
-
-        if (!storage.addComment(theme, commentIndex, comment))
+        if (user.isEmpty())
             return ResponseEntity.status(400).build();
+
+        Comment comment = commentOptional.get();
+
+        comment.setText(node.get("text").asText());
+        comment.setUser(user.get());
+
+        commentRepository.save(comment);
 
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("theme/{index}/comments")
-    public ResponseEntity<String> themeCommentIndex(@PathVariable Integer index) {
+    @GetMapping("theme/{themeId}/comments")
+    public ResponseEntity<String> themeCommentIndex(@PathVariable Long themeId) {
+        Optional<Theme> theme = themeRepository.findById(themeId);
+
+        if (theme.isEmpty())
+            return ResponseEntity.status(400).build();
+
         return ResponseEntity.ok(
-                storage.getThemes().get(index).getComments().stream()
-                        .map(Comment::toString).collect(Collectors.joining("\n"))
+                theme.get().getComments().stream()
+                        .map(Comment::toString)
+                        .collect(Collectors.joining("\n"))
         );
     }
 
-    @GetMapping("user/{user}/comment")
-    public ResponseEntity<String> userCommentIndex(@PathVariable Integer user) {
-        List<Comment> comments = storage.getUserComments(storage.getUsers().get(user));
+    @GetMapping("user/{userId}/comment")
+    public ResponseEntity<String> userCommentIndex(@PathVariable Long userId) {
+        Optional<User> user = userRepository.findById(userId);
+
+        if (user.isEmpty())
+            return ResponseEntity.status(400).build();
 
         return ResponseEntity.ok(
-                comments.stream().map(Comment::toString).collect(Collectors.joining("\n"))
+                user.get().getComments().stream()
+                        .map(Comment::toString)
+                        .collect(Collectors.joining("\n"))
         );
     }
 
-    @PutMapping("theme/{theme}/comment-by/{user}")
-    public ResponseEntity<Void> userCommentUpdate(@PathVariable("theme") Integer themeIndex, @PathVariable("user") Integer userIndex, @RequestBody Comment newComment) {
-        User user = storage.getUsers().get(userIndex);
-        Theme theme = storage.getThemes().get(themeIndex);
+    @PutMapping("theme/{themeId}/comment-by/{userId}")
+    public ResponseEntity<Void> userCommentUpdate(@PathVariable Long themeId, @PathVariable Long userId, @RequestBody JsonNode node) {
+        Optional<Theme> theme = themeRepository.findById(themeId);
 
-        theme.getComments().removeIf(c -> c.getUsername().equals(user.getName()));
-        storage.addComment(theme, newComment);
+        if (theme.isEmpty())
+            return ResponseEntity.status(400).build();
 
-        return ResponseEntity.noContent().build();
+        Optional<User> user = userRepository.findById(userId);
+
+        if (user.isEmpty())
+            return ResponseEntity.status(400).build();
+
+        Optional<Comment> comment = commentRepository.getCommentByThemeIdAndUserId(themeId, userId);
+
+        if (comment.isEmpty())
+            return ResponseEntity.status(400).build();
+
+        return this.themeCommentUpdate(comment.get().getId(), node);
     }
 
-    @DeleteMapping("user/{user}/comment")
-    public ResponseEntity<Void> userCommentDestroyAll(@PathVariable("user") Integer userIndex) {
-        User user = storage.getUsers().get(userIndex);
-        storage.removeCommentsOf(user);
+    @DeleteMapping("user/{userId}/comment")
+    public ResponseEntity<Void> userCommentDestroyAll(@PathVariable Long userId) {
+        if (!userRepository.existsById(userId))
+            return ResponseEntity.status(400).build();
+
+        commentRepository.removeCommentByUserId(userId);
 
         return ResponseEntity.noContent().build();
     }

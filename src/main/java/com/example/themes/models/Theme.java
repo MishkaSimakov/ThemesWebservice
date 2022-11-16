@@ -1,28 +1,27 @@
 package com.example.themes.models;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
+import lombok.*;
 
-import java.util.ArrayList;
+import javax.persistence.*;
 import java.util.List;
 
+@Entity
 @Getter
 @Setter
 @ToString
-public class Theme {
+@NoArgsConstructor
+public class Theme extends EntityWithTimestamps {
+    @Id
+    @GeneratedValue
+    private Long id;
+
     private String title;
     private String description;
-    private String username;
 
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User user;
+
+    @OneToMany(mappedBy = "theme")
     private List<Comment> comments;
-
-    public Theme(String title, String description, String username) {
-        this.title = title;
-        this.description = description;
-        this.username = username;
-
-        this.comments = new ArrayList<>();
-    }
 }
